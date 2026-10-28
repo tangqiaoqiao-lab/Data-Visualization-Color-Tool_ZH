@@ -13,6 +13,8 @@
 
 ## 运行
 
+**在线访问**：https://tangqiaoqiao-lab.github.io/Data-Visualization-Color-Tool_ZH/ （push 到 main 后自动部署）
+
 单文件零依赖，直接用浏览器打开 `index.html` 即可。
 
 本地开发（可选，带禁用缓存响应头，改代码后刷新必为最新）：
