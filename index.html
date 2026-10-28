@@ -1,0 +1,1376 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数据可视化色彩搭配工具 · LCH + TTS</title>
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --card: #ffffff;
+    --border: #e6e8ec;
+    --text: #1a1f28;
+    --text-2: #5c6470;
+    --text-3: #9aa1ac;
+    --accent: #1b58f4;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-font-smoothing: antialiased; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+  .wrap { max-width: none; margin: 0 auto; padding: 14px 20px 16px; }
+
+  header.hero { padding: 2px 0 12px; }
+  header.hero h1 { font-size: 32px; font-weight: 700; letter-spacing: .5px; }
+  header.hero p { color: var(--text-2); margin-top: 4px; font-size: 13px; }
+  header.hero .tag { display:inline-block; margin-left: 10px; font-size: 12px; color: var(--accent); background: rgba(27,88,244,.08); padding: 2px 10px; border-radius: 999px; vertical-align: 3px; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+  .card > h2 { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+  .card > .desc { font-size: 13px; color: var(--text-2); margin-bottom: 18px; }
+  .num { display:inline-flex; align-items:center; justify-content:center; width: 22px; height: 22px; border-radius: 50%; background: var(--text); color:#fff; font-size: 12px; margin-right: 8px; vertical-align: 1px;}
+
+  /* ===== 双栏布局：左侧 1/2/3/5，右侧 4 ===== */
+  .layout { display: grid; grid-template-columns: 400px minmax(0, 1fr); gap: 16px; align-items: start; }
+  .col-side, .col-main { min-width: 0; }
+  /* 左栏定高 + 内部滚动条；右栏 sticky 固定，滚动鼠标时保持不动 */
+  .col-side {
+    position: sticky; top: 12px;
+    height: calc(100vh - 140px);
+    overflow-y: auto;
+    padding-right: 6px;
+    scrollbar-width: thin;
+    scrollbar-color: #c9ced6 transparent;
+  }
+  .col-side::-webkit-scrollbar { width: 8px; }
+  .col-side::-webkit-scrollbar-track { background: transparent; }
+  .col-side::-webkit-scrollbar-thumb { background: #d3d7de; border-radius: 4px; }
+  .col-side::-webkit-scrollbar-thumb:hover { background: #b9bec7; }
+  .col-main { position: sticky; top: 12px; }
+  @media (max-width: 1100px) {
+    /* 小屏单列：模块顺序 1 → 2 → 3 → 4 → 5，宽度撑满屏幕 */
+    .layout { display: flex; flex-direction: column; align-items: stretch; }
+    .col-side, .col-main { display: contents; }
+    #cardBase { order: 1; }
+    #cardRamps { order: 2; }
+    #cardKit { order: 3; }
+    .gen-card { order: 4; }
+    #cardHelp { order: 5; }
+    .col-side { overflow-y: visible; }
+    .col-side .card { margin-bottom: 16px; }
+    .gen-card { margin-bottom: 16px; }
+  }
+  .col-side .card { margin-bottom: 12px; }
+  .viz-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
+  .viz-box { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+  .viz-box h4 { font-size: 12px; color: var(--text-2); font-weight: 600; margin-bottom: 6px; }
+  #donutBox, #barBox, #lineBox { height: clamp(230px, 32vh, 420px); }
+  /* 环形图限高居中，与柱状图视觉平衡 */
+  #donutBox { display: flex; align-items: center; justify-content: center; }
+  #donutBox svg { width: auto; height: 100%; max-height: 300px; max-width: 100%; }
+  @media (max-width: 1100px) {
+    .viz-row { grid-template-columns: 1fr; }
+    #donutBox, #barBox, #lineBox { height: 200px; }
+  }
+  details.card { padding: 0; }
+  details.card > summary {
+    list-style: none; cursor: pointer; user-select: none;
+    display: flex; align-items: center; gap: 2px;
+    padding: 17px 24px; font-size: 16px; font-weight: 700;
+  }
+  details.card > summary::-webkit-details-marker { display: none; }
+  details.card > summary:hover { color: var(--accent); }
+  details.card > summary .chev { margin-left: auto; color: var(--text-3); font-size: 12px; transition: transform .18s; }
+  details.card[open] > summary .chev { transform: rotate(180deg); }
+  details.card > .desc { padding: 2px 24px 0; margin-bottom: 16px; }
+  details.card > #rampArea, details.card > #kitArea { padding: 0 24px 20px; }
+  /* 左窄栏内的色阶与工具包适配 */
+  .col-side .ramp .step { font-size: 9.5px; padding: 4px 5px; height: 50px; }
+  .col-side .ramp-title { font-size: 12.5px; }
+  .col-side .ramp-title .sub { display: none; }
+  .col-side .ramp-block { margin-bottom: 2px; }
+  .col-side .kit-grid { padding: 4px 8px 12px; }
+  .col-side .kit-swatch { width: calc(50% - 4px); }
+  .col-side .kit-swatch .box { height: 50px; } /* 与左侧色阶步进高度一致 */
+  .col-side details.kit-group summary { padding: 10px 12px; font-size: 13px; }
+  .col-side details.kit-group summary .mini { display: none; }
+  details.kit-group summary .ref-hex { margin-left: auto; font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--text-2); }
+  .col-side .kit-swatch { width: calc(33.333% - 6px); }
+  .col-side .kit-swatch .box { height: 50px; font-size: 10.5px; }
+  .col-side .kit-swatch .box .hexv { font-size: 9.5px; }
+  .col-side .ramp-legend { display: none; }
+
+  /* ===== 输入区 ===== */
+  .input-stack { display: flex; flex-direction: column; gap: 12px; }
+  .big-swatch {
+    width: 100%; min-height: 108px; border-radius: 10px; position: relative;
+    display:flex; align-items:flex-end; padding: 10px; color:#fff; font-size: 13px; font-weight: 600;
+    text-shadow: 0 1px 3px rgba(0,0,0,.25); cursor: pointer;
+  }
+  .field-row { display:flex; gap:10px; align-items:center; }
+  #valueInput { flex: 1; width: auto; min-width: 0; }
+  input[type="text"].hex {
+    width: 212px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
+    font-size: 13.5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; outline: none;
+  }
+  input[type="text"].hex:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(27,88,244,.12); }
+  select.mode-sel {
+    font-weight: 600; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
+    font-size: 13.5px; background: #fff; color: var(--text); outline: none; cursor: pointer; font-family: inherit;
+  }
+  select.mode-sel:focus { border-color: var(--accent); }
+  /* 下拉框自定义箭头：与右边框保持 10px 间距 */
+  select {
+    -webkit-appearance: none; appearance: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%235c6470' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+  }
+  select, select.mode-sel { padding-right: 30px !important; }
+  input[type="color"] { width: 42px; height: 38px; border: 1px solid var(--border); border-radius: 8px; padding: 2px; background: #fff; cursor: pointer; }
+  .lch-readout { font-size: 12.5px; color: var(--text-2); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .presets { margin-top: 14px; }
+  .presets .lbl { font-size: 12.5px; color: var(--text-3); margin-bottom: 8px; }
+  .preset-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .preset {
+    width: 26px; height: 26px; border-radius: 8px; cursor: pointer; border: 1px solid rgba(0,0,0,.08);
+    transition: transform .12s;
+  }
+  .preset:hover { transform: scale(1.12); }
+
+  /* ===== 色阶 ===== */
+  .ramp-block { margin-bottom: 6px; }
+  .ramp-title { font-size: 13.5px; font-weight: 600; margin: 14px 0 8px; display:flex; align-items:center; gap:8px; flex-wrap: wrap; }
+  .ramp-title .sub { font-weight: 400; color: var(--text-3); font-size: 12px; }
+  .ramp { display:flex; border-radius: 8px; overflow: visible; }
+  .ramp .step {
+    flex: 1; height: 56px; position: relative; cursor: pointer;
+    display:flex; align-items:flex-end; padding: 6px 7px;
+    font-size: 11px; color: rgba(255,255,255,.85);
+  }
+  .ramp .step:first-child { border-radius: 8px 0 0 8px; }
+  .ramp .step:last-child { border-radius: 0 8px 8px 0; }
+  .ramp .step.light { color: rgba(0,0,0,.55); }
+  .ramp .step .lock {
+    position:absolute; top:5px; right:5px; width:14px; height:14px; opacity:.9;
+  }
+  .ramp .step.pill { border-radius: 999px; z-index: 2; box-shadow: 0 0 0 3px #fff, 0 2px 8px rgba(0,0,0,.18); transform: scaleY(1.08); }
+  .ramp-legend { font-size: 12px; color: var(--text-3); margin-top: 14px; }
+  .ramp-legend .lock-inline { width: 12px; height: 12px; vertical-align: -2px; }
+
+  /* ===== 工具包 ===== */
+  details.kit-group { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px; }
+  details.kit-group summary {
+    padding: 12px 16px; cursor: pointer; font-size: 14px; font-weight: 600; list-style: none;
+    display:flex; align-items:center; gap:10px; user-select: none;
+  }
+  details.kit-group summary::-webkit-details-marker { display:none; }
+  details.kit-group summary .arrow { transition: transform .15s; color: var(--text-3); font-size: 12px; }
+  details.kit-group[open] summary .arrow { transform: rotate(90deg); }
+  details.kit-group summary .mini { display:flex; gap:3px; margin-left:auto; }
+  details.kit-group summary .mini i { width: 14px; height: 14px; border-radius: 4px; display:block; }
+  .kit-grid { display:flex; flex-wrap: wrap; gap: 8px; padding: 4px 16px 16px; }
+  .kit-swatch { width: 108px; cursor: pointer; }
+  .kit-swatch .box { height: 68px; border-radius: 8px; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-end; gap: 2px; padding: 6px 8px; font-size: 11.5px; color: rgba(255,255,255,.92); position: relative; }
+  .kit-swatch .box .hexv { font-size: 10.5px; opacity: .8; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .kit-swatch .box.light { color: rgba(0,0,0,.6); }
+  .kit-swatch .box .hexv { font-size: 10.5px; opacity: .8; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+  /* ===== 生成器 ===== */
+  .tabs { display:flex; gap: 6px; background: #eef0f3; border-radius: 10px; padding: 4px; width: fit-content; margin-bottom: 18px; }
+  .tabs button {
+    border: none; background: transparent; padding: 8px 16px; border-radius: 8px; cursor: pointer;
+    font-size: 13.5px; color: var(--text-2); font-family: inherit;
+  }
+  .tabs button.on { background: #fff; color: var(--text); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+  .ctrl-row { display:flex; gap: 18px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+  .ctrl { display:flex; align-items:center; gap:8px; font-size: 13.5px; color: var(--text-2); }
+  /* B 品牌色输入框：与 A 品牌色输入框同宽，长数值（OKLCH）也不截断 */
+  #dualBHex { width: 250px; }
+  .ctrl b { color: var(--text); font-weight: 600; }
+  select {
+    padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13.5px;
+    background: #fff; font-family: inherit; color: var(--text); outline: none; cursor: pointer;
+  }
+  select:focus { border-color: var(--accent); }
+  .hue-chips { display:flex; gap:8px; flex-wrap: wrap; }
+  .chip {
+    display:flex; align-items:center; gap:8px; padding: 6px 12px 6px 7px; border: 1.5px solid var(--border);
+    border-radius: 999px; cursor: pointer; font-size: 13px; color: var(--text-2); background: #fff; user-select: none;
+    transition: all .12s;
+  }
+  .chip i { width: 20px; height: 20px; border-radius: 50%; display:block; border: 1px solid rgba(0,0,0,.08); }
+  .chip.sel { border-color: var(--accent); color: var(--text); background: rgba(27,88,244,.05); font-weight: 600; }
+  .chip .ord { font-size: 11px; background: var(--accent); color:#fff; border-radius: 999px; width: 16px; height: 16px; display:none; align-items:center; justify-content:center; }
+  .chip.sel .ord { display:inline-flex; }
+  .btn {
+    border: 1px solid var(--border); background: #fff; color: var(--text); padding: 7px 14px; border-radius: 8px;
+    cursor: pointer; font-size: 13px; font-family: inherit; transition: all .12s;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.primary { background: var(--text); color: #fff; border-color: var(--text); }
+  .btn.primary:hover { background: #000; }
+  .hint { font-size: 12.5px; color: var(--text-3); margin-top: 4px; }
+  .hint.warn { color: #b45309; }
+
+  .result { margin-top: 12px; border-top: 1px dashed var(--border); padding-top: 14px; }
+  .rule-line { font-size: 11.5px; color: var(--text-2); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; margin-bottom: 12px; }
+  .rule-line b { color: var(--text); }
+  .palette-strip { display:flex; border-radius: 10px; overflow: hidden; height: 96px; }
+  .palette-strip .seg {
+    flex: 1; position: relative; cursor: pointer; display:flex; flex-direction:column; justify-content:flex-end;
+    padding: 8px 10px; font-size: 11.5px; color: rgba(255,255,255,.92); min-width: 0;
+  }
+  .tag-row { display:flex; gap:8px; flex-wrap:wrap; }
+  .tag-btn {
+    padding: 6px 14px; border: 1px solid var(--border); border-radius: 999px; background: #fff;
+    cursor: pointer; font-size: 13px; color: var(--text-2); font-family: inherit; transition: all .12s;
+  }
+  .tag-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .tag-btn.on { border-color: var(--accent); color: var(--accent); background: rgba(27,88,244,.06); font-weight: 600; }
+  .palette-strip .seg.light { color: rgba(0,0,0,.6); }
+  .palette-strip .seg .cn { position: absolute; top: 8px; left: 10px; font-size: 12.5px; font-weight: 700; opacity: .95; }
+  .palette-strip .seg .no { font-weight: 700; font-size: 12px; }
+  .palette-strip .seg .role { opacity:.9; }
+  .palette-strip .seg .hexv { opacity:.75; font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; }
+  .result-foot { display:flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
+  .export-area { margin-top: 10px; }
+  textarea.export {
+    width: 100%; min-height: 0; height: 80px; border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--text-2);
+    resize: none; outline: none; background: #fafbfc; white-space: pre; overflow: auto;
+  }
+
+  .gen-card { padding: 16px 20px; }
+  .gen-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .gen-head h2 { font-size: 17px; font-weight: 700; }
+  .gen-head .desc-inline { font-size: 12.5px; color: var(--text-2); }
+  .gen-card .tabs { margin-bottom: 12px; }
+  .gen-card .ctrl-row { margin-bottom: 10px; }
+  .viz-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
+  .viz-box { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+  .viz-box h4 { font-size: 12px; color: var(--text-2); font-weight: 600; margin-bottom: 6px; }
+  .legend { display:flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 10px; }
+  .legend span { font-size: 11.5px; color: var(--text-2); display:flex; align-items:center; gap:5px; }
+  .legend i { width: 10px; height: 10px; border-radius: 3px; display:inline-block; }
+
+  /* toast */
+  #toast {
+    position: fixed; left: 50%; bottom: 36px; transform: translateX(-50%) translateY(20px);
+    background: rgba(20,24,32,.92); color:#fff; font-size: 13px; padding: 9px 18px; border-radius: 999px;
+    opacity: 0; pointer-events:none; transition: all .25s; z-index: 99;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  .help-body { font-size: 12.5px; color: var(--text-2); padding: 2px 24px 20px; }
+  .help-src { font-size: 12.5px; color: var(--text-2); background: #f4f5f7; border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; }
+  .help-src a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+  .help-src a:hover { opacity: .8; }
+  .help-body h3 { font-size: 13px; color: var(--text); margin: 14px 0 5px; }
+  .help-body ol { padding-left: 18px; }
+  .help-body li { margin: 3px 0; }
+  .help-body code { background: #eef0f3; padding: 1px 6px; border-radius: 4px; font-size: 11.5px; }
+
+  @media (max-width: 720px) {
+    .kit-swatch { width: calc(50% - 4px); }
+    .palette-strip { height: 64px; }
+    .ramp .step { font-size: 9px; padding: 4px; }
+  }
+
+  /* 所有下拉框：自定义箭头（置于样式表末尾，避免被 background 简写覆盖），箭头距右边框 10px */
+  select {
+    -webkit-appearance: none !important; appearance: none !important;
+    padding-right: 30px !important;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%235c6470' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>") !important;
+    background-repeat: no-repeat !important;
+    background-position: right 10px center !important;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <h1>数据可视化色彩搭配工具</h1>
+  </header>
+
+  <div class="layout">
+  <div class="col-side">
+  <!-- 1. 品牌色输入 -->
+  <section class="card" id="cardBase">
+    <h2><span class="num">1</span>品牌色 / 基础色</h2>
+    <div class="input-stack">
+      <div class="big-swatch" id="bigSwatch" title="点击打开取色器">
+        <span id="bigSwatchHex">#1b58f4</span>
+      </div>
+      <div class="field-row">
+        <select id="modeSel" class="mode-sel" title="切换色彩空间">
+          <option value="hex">HEX</option>
+          <option value="rgb">RGB</option>
+          <option value="hsl">HSL</option>
+          <option value="lch">LCH</option>
+          <option value="oklch">OKLCH</option>
+          <option value="lab">LAB</option>
+        </select>
+        <input type="color" id="colorPicker" value="#1b58f4" title="点击大色块打开取色器" style="position:absolute; opacity:0; width:0; height:0; padding:0; border:none;">
+        <input type="text" class="hex" id="valueInput" value="#1b58f4" spellcheck="false" title="支持当前所选色彩空间格式输入">
+      </div>
+      <div class="presets" id="presets"></div>
+    </div>
+  </section>
+
+  <!-- 2. OKLCH 色阶（默认收起） -->
+  <details class="card coll" id="cardRamps">
+    <summary><span class="num">2</span>OKLCH 色阶<span class="chev">▼</span></summary>
+    <div class="desc">品牌色与和谐色各生成 10 级 OKLCH 色阶（Lightness 限定 5–95）。<svg class="lock-inline" viewBox="0 0 16 16" width="12" height="12"><path fill="#5c6470" d="M8 1a3.5 3.5 0 0 0-3.5 3.5V6H4a1.5 1.5 0 0 0-1.5 1.5v6A1.5 1.5 0 0 0 4 15h8a1.5 1.5 0 0 0 1.5-1.5v-6A1.5 1.5 0 0 0 12 6h-.5V4.5A3.5 3.5 0 0 0 8 1Zm2 5H6V4.5a2 2 0 1 1 4 0V6Z"/></svg> 锁定的色阶为品牌色与以品牌色为基础的和谐色（如对比色、邻近色、分裂互补色等）。</div>
+    <div id="rampArea"></div>
+  </details>
+
+  <!-- 3. 色彩工具包（默认收起） -->
+  <details class="card coll" id="cardKit">
+    <summary><span class="num">3</span>单色色彩工具包<span class="chev">▼</span></summary>
+    <div class="desc">每个色彩抽取 6 色：<b>A 60</b> 同明度搭配色（OKLCH 色阶）· <b>A 40</b> 亮一阶 · <b>A 80</b> 暗一阶 · <b>Tint / Tone / Shade</b> 由和谐基准色拓展（强度默认随品牌色所在色阶自适应，可在「搭配方案生成」顶部手动固定）。点击任意色块复制 HEX。</div>
+    <div id="kitArea"></div>
+  </details>
+  <!-- 5. 帮助（默认收起） -->
+  <details class="card coll" id="cardHelp">
+    <summary><span class="num">5</span>说明<span class="chev">▼</span></summary>
+    <div class="help-body">
+      <div class="help-src">基于《<a href="https://qiaoqiaotang.notion.site/c0aafdbddbf143ae9bc614d0e44506d4" target="_blank" rel="noopener">如何制作和谐的数据可视化色彩搭配</a>》方法论：品牌色 → OKLCH 同明度和谐色阶 → 按固定规则生成数据可视化配色</div>
+      <h3>方法论</h3>
+      <ol>
+        <li>输入品牌色 / 基础色；</li>
+        <li>在 HSL 色彩空间计算对比色、邻近色、分裂互补色、三联色、方形调色；</li>
+        <li>所有色彩转化为 OKLCH 色彩空间 —— 明度更统一、色相恒定（明亮区间蓝色系不偏紫），色彩更和谐；</li>
+        <li>基于品牌色生成和谐色（Lightness 限定 5–95），每个颜色生成 10 个色阶（A 100 → A 10），找到同明度的色彩序列；</li>
+        <li>抽取颜色，按特定规则、顺序进行搭配：同一色彩的【品牌色 + TTS 色调】用于单色系；不同色彩的【品牌色 + TTS 色调】用于多色系；方法 2 为 A 品牌色 + B 品牌色直接搭配。</li>
+      </ol>
+      <h3>实现约定</h3>
+      <ul style="padding-left:18px">
+        <li>和谐基准色 = HSL 色轮旋转出的原始和谐色（如 #1b58f4 的对比色 #f5b61b、邻近色1 #19c5f4、邻近色2 #4a1bf4…）；</li>
+        <li><b>Tint / Tone / Shade 以和谐基准色为基准拓展</b>（混入白 / 灰 #808080 / 黑），强度默认随品牌色所在色阶自适应：亮色带（A 10–40）用 T60/T50/S60、中色带（A 50–60）用 T70/T60/S70、深色带（A 70–100）用 T80/T70/S80，也可手动固定或选「随机」（排除 10 / 90，三值拉开明显差距），而非从同明度锁定色拓展；</li>
+        <li>搭配规则中的 A 60 = OKLCH 色阶里与品牌色同明度（L）的「品牌等价色」，A 40 / A 80 = 色阶中 L ± 20 的亮 / 暗变体；</li>
+        <li>彩度取品牌色彩度，按 sRGB 色域等色相收缩（二分最大 Chroma）钳制，保证显示准确且不过饱和刺眼；</li>
+        <li>和谐色相在 HSL 色轮上旋转（对比 +180°、邻近 ±30°、分裂互补 150°/210°、三联 120°/240°、方形 90°/180°/270°）；方形调色2 与对比色同相（原文 img11「方形调色2（同对比色）」）；</li>
+        <li>顺序随机的四条规则、多色系优选与暗色版规则均照原文 img18–img20 逐条实现。</li>
+      </ul>
+    </div>
+  </details>
+  </div><!-- /col-side -->
+
+  <div class="col-main">
+  <!-- 4. 搭配方案 -->
+  <section class="card gen-card">
+    <div class="gen-head">
+      <h2><span class="num">4</span>搭配方案生成</h2>
+    </div>
+
+    <div class="tabs" id="modeTabs">
+      <button data-mode="mono" class="on">单色系</button>
+      <button data-mode="harmony">多色系 · 品牌色 + 和谐色</button>
+      <button data-mode="dual">多色系 · 双品牌色</button>
+    </div>
+
+    <div id="genControls"></div>
+    <div id="genResult" class="result" style="display:none">
+      <div class="palette-strip" id="paletteStrip"></div>
+      <div class="result-foot">
+        <button class="btn" id="btnCopyHex">复制 HEX</button>
+        <button class="btn" id="btnCopyCss">复制 CSS 变量</button>
+        <button class="btn" id="btnCopyJson">复制 JSON</button>
+        <button class="btn primary" id="btnShuffle" style="display:none">换一个顺序</button>
+      </div>
+      <div class="export-area"><textarea class="export" id="exportBox" readonly></textarea></div>
+
+      <div class="viz-row">
+        <div class="viz-box">
+          <h4>环形图 · 用量占比</h4>
+          <div id="donutBox"></div>
+          <div class="legend" id="donutLegend"></div>
+        </div>
+        <div class="viz-box">
+          <h4>柱状图 · 分组对比</h4>
+          <div id="barBox"></div>
+        </div>
+        <div class="viz-box">
+          <h4>折线图 · 趋势</h4>
+          <div id="lineBox"></div>
+          <div class="legend" id="lineLegend"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+  </div><!-- /col-main -->
+  </div><!-- /layout -->
+</div>
+
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* ============================================================
+   色彩引擎：sRGB ↔ XYZ ↔ CIE Lab ↔ LCH（D65）+ HSL + 色域钳制
+============================================================ */
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+function hexToRgb(hex) {
+  hex = hex.replace("#", "").trim();
+  if (hex.length === 3) hex = hex.split("").map(c => c + c).join("");
+  const n = parseInt(hex, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+const rgbToHex = (r, g, b) =>
+  "#" + [r, g, b].map(v => clamp(Math.round(v), 0, 255).toString(16).padStart(2, "0")).join("");
+
+const srgbToLinear = c => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+const linearToSrgb = c => (c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
+
+function rgbToXyz(rgb) {
+  const [r, g, b] = rgb.map(v => srgbToLinear(v / 255));
+  return [
+    0.4124564 * r + 0.3575761 * g + 0.1804375 * b,
+    0.2126729 * r + 0.7151522 * g + 0.0721750 * b,
+    0.0193339 * r + 0.1191920 * g + 0.9503041 * b,
+  ];
+}
+const XN = 0.95047, YN = 1.00000, ZN = 1.08883;
+const fLab = t => (t > 0.008856 ? Math.cbrt(t) : (7.787 * t + 16 / 116));
+
+function xyzToLab(xyz) {
+  const fX = fLab(xyz[0] / XN), fY = fLab(xyz[1] / YN), fZ = fLab(xyz[2] / ZN);
+  return [116 * fY - 16, 500 * (fX - fY), 200 * (fY - fZ)];
+}
+function rgbToLab(rgb) { return xyzToLab(rgbToXyz(rgb)); }
+const fLabInv = t => (t > 6 / 29 ? t * t * t : (t - 16 / 116) / 7.787);
+
+function labToXyz(lab) {
+  const [L, a, b] = lab;
+  const fy = (L + 16) / 116, fx = fy + a / 500, fz = fy - b / 200;
+  return [fLabInv(fx) * XN, fLabInv(fy) * YN, fLabInv(fz) * ZN];
+}
+function labToLch(lab) {
+  const [L, a, b] = lab;
+  const C = Math.sqrt(a * a + b * b);
+  let H = Math.atan2(b, a) * 180 / Math.PI;
+  if (H < 0) H += 360;
+  return [L, C, H];
+}
+function rgbToLch(rgb) { return labToLch(rgbToLab(rgb)); }
+
+function labToRgbRaw(lab) {
+  const xyz = labToXyz(lab);
+  const r =  3.2404542 * xyz[0] - 1.5371385 * xyz[1] - 0.4985314 * xyz[2];
+  const g = -0.9692660 * xyz[0] + 1.8760108 * xyz[1] + 0.0415560 * xyz[2];
+  const b =  0.0556434 * xyz[0] - 0.2040259 * xyz[1] + 1.0572252 * xyz[2];
+  const lin = [r, g, b];
+  const inG = lin.every(v => v >= -0.0008 && v <= 1.0008);
+  return { rgb: lin.map(v => clamp(linearToSrgb(clamp(v, 0, 1)) * 255, 0, 255)), inG };
+}
+/* 等色相收缩：固定 L、H，二分最大可显示 Chroma */
+function maxChroma(L, H) {
+  let lo = 0, hi = 140;
+  if (labToRgbRaw(labToLchToLab(L, hi, H)).inG) return hi;
+  for (let i = 0; i < 24; i++) {
+    const mid = (lo + hi) / 2;
+    if (labToRgbRaw(labToLchToLab(L, mid, H)).inG) lo = mid; else hi = mid;
+  }
+  return lo;
+}
+const labToLchToLab = (L, C, H) => {
+  const rad = H * Math.PI / 180;
+  return [L, C * Math.cos(rad), C * Math.sin(rad)];
+};
+function lchToRgbClamped(L, C, H) {
+  const Cmax = maxChroma(L, H);
+  const res = labToRgbRaw(labToLchToLab(L, Math.min(C, Cmax), H));
+  return res.rgb;
+}
+
+/* HSL（用于和谐色相旋转，与原文步骤 2 一致） */
+function rgbToHsl(rgb) {
+  const [r0, g0, b0] = rgb.map(v => v / 255);
+  const mx = Math.max(r0, g0, b0), mn = Math.min(r0, g0, b0);
+  let h = 0, s = 0;
+  const l = (mx + mn) / 2;
+  if (mx !== mn) {
+    const d = mx - mn;
+    s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+    if (mx === r0) h = ((g0 - b0) / d + (g0 < b0 ? 6 : 0));
+    else if (mx === g0) h = (b0 - r0) / d + 2;
+    else h = (r0 - g0) / d + 4;
+    h *= 60;
+  }
+  return [h, s, l];
+}
+function hslToRgb(h, s, l) {
+  h = ((h % 360) + 360) % 360;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+  const m = l - c / 2;
+  let [r, g, b] = [0, 0, 0];
+  if (h < 60) [r, g, b] = [c, x, 0];
+  else if (h < 120) [r, g, b] = [x, c, 0];
+  else if (h < 180) [r, g, b] = [0, c, x];
+  else if (h < 240) [r, g, b] = [0, x, c];
+  else if (h < 300) [r, g, b] = [x, 0, c];
+  else [r, g, b] = [c, 0, x];
+  return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
+}
+
+/* TTS：sRGB 空间与白 / 灰 / 黑混合（原文 img 定义） */
+const mixRgb = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+const tint = (rgb, t) => mixRgb(rgb, [255, 255, 255], t);
+const tone = (rgb, t) => mixRgb(rgb, [128, 128, 128], t);
+const shade = (rgb, t) => mixRgb(rgb, [0, 0, 0], t);
+
+/* 明度文本用色：按 Lab L* 判断 */
+const isLightColor = rgb => rgbToLab(rgb)[0] >= 62;
+
+/* ===== OKLab / OKLCh（用于色彩空间展示与输入） ===== */
+function linRgbToOklab(r, g, b) {
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return [
+    0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+    1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+    0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s,
+  ];
+}
+function oklabToLinRgbRaw(L, a, b) {
+  const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
+  const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
+  const s_ = L - 0.0894841775 * a - 1.2914855480 * b;
+  const l = l_ * l_ * l_, m = m_ * m_ * m_, s = s_ * s_ * s_;
+  const lin = [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s,
+  ];
+  const inG = lin.every(v => v >= -0.0008 && v <= 1.0008);
+  return { rgb: lin.map(v => clamp(linearToSrgb(clamp(v, 0, 1)) * 255, 0, 255)), inG };
+}
+const oklchToOklab = (L, C, H) => { const rad = H * Math.PI / 180; return [L, C * Math.cos(rad), C * Math.sin(rad)]; };
+function oklchToRgbClamped(L, C, H) {
+  const at = c => oklabToLinRgbRaw(...oklchToOklab(L, c, H));
+  if (at(C).inG) return at(C).rgb;
+  let lo = 0, hi = C; // 色域外则收缩 Chroma
+  for (let i = 0; i < 24; i++) { const m = (lo + hi) / 2; if (at(m).inG) lo = m; else hi = m; }
+  return at(lo).rgb;
+}
+
+/* 角色标签：OKLCH L（0–100）→ 色阶标签（同标签即同明度位置） */
+const okStepLabel = L => "A " + (10 + Math.round((95 - clamp(L, 5, 95)) / 10) * 10);
+const labToRgbClamped = (L, a, b) => { const [, C, H] = labToLch([L, a, b]); return lchToRgbClamped(L, C, H); };
+
+/* ===== OKLCH 引擎（0–100 明度标度）：恒定色相，明亮区间的蓝色系不再偏紫 ===== */
+function rgbToOklch100(rgb) {
+  const [oL, oC, oH] = labToLch(linRgbToOklab(...rgb.map(v => srgbToLinear(v / 255))));
+  return [oL * 100, oC, oH];
+}
+function okMaxChroma(L100, H) {
+  const L = L100 / 100;
+  let lo = 0, hi = 0.5;
+  if (oklabToLinRgbRaw(...oklchToOklab(L, hi, H)).inG) return hi;
+  for (let i = 0; i < 24; i++) { const m = (lo + hi) / 2; if (oklabToLinRgbRaw(...oklchToOklab(L, m, H)).inG) lo = m; else hi = m; }
+  return lo;
+}
+function oklchToRgb100(L100, C, H) {
+  const L = clamp(L100, 0, 100) / 100;
+  const at = c => oklabToLinRgbRaw(...oklchToOklab(L, c, H));
+  if (at(C).inG) return at(C).rgb;
+  let lo = 0, hi = C;
+  for (let i = 0; i < 24; i++) { const m = (lo + hi) / 2; if (at(m).inG) lo = m; else hi = m; }
+  return at(lo).rgb;
+}
+
+/* ===== 色彩空间格式化与解析（品牌色输入框多模式） ===== */
+function formatColorValue(hex, mode) {
+  const rgb = hexToRgb(hex);
+  const [L, C, H] = rgbToLch(rgb);
+  const [labL, labA, labB] = rgbToLab(rgb);
+  const [h, s, l] = rgbToHsl(rgb);
+  switch (mode) {
+    case "rgb":   return `rgb(${Math.round(rgb[0])}, ${Math.round(rgb[1])}, ${Math.round(rgb[2])})`;
+    case "hsl":   return `hsl(${Math.round(h)}, ${Math.round(s * 100)}%, ${Math.round(l * 100)}%)`;
+    case "lch":   return `lch(${L.toFixed(1)} ${C.toFixed(1)} ${H.toFixed(1)})`;
+    case "oklch": {
+      const [oL, oC, oH] = labToLch(linRgbToOklab(...rgb.map(v => srgbToLinear(v / 255))));
+      return `oklch(${oL.toFixed(3)} ${oC.toFixed(3)} ${oH.toFixed(1)})`;
+    }
+    case "lab":   return `lab(${labL.toFixed(1)} ${labA.toFixed(1)} ${labB.toFixed(1)})`;
+    default:      return rgbToHex(...rgb);
+  }
+}
+function parseColorValue(text, mode) {
+  const nums = (text.match(/-?[\d.]+/g) || []).map(Number);
+  const hexOk = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.test(text.trim());
+  const wrap360 = d => ((d % 360) + 360) % 360;
+  try {
+    switch (mode) {
+      case "hex":   return hexOk ? rgbToHex(...hexToRgb(text)) : null;
+      case "rgb":   return nums.length >= 3 ? rgbToHex(...nums.slice(0, 3).map(v => clamp(v, 0, 255))) : null;
+      case "hsl":   return nums.length >= 3 ? rgbToHex(...hslToRgb(wrap360(nums[0]), clamp(nums[1], 0, 100) / 100, clamp(nums[2], 0, 100) / 100)) : null;
+      case "lch":   return nums.length >= 3 ? rgbToHex(...lchToRgbClamped(clamp(nums[0], 0, 100), Math.max(0, nums[1]), wrap360(nums[2]))) : null;
+      case "oklch": return nums.length >= 3 ? rgbToHex(...oklchToRgbClamped(clamp(nums[0], 0, 1), Math.max(0, nums[1]), wrap360(nums[2]))) : null;
+      case "lab":   return nums.length >= 3 ? rgbToHex(...labToRgbClamped(clamp(nums[0], 0, 100), nums[1], nums[2])) : null;
+    }
+  } catch (e) { return null; }
+  return null;
+}
+
+/* ============================================================
+   方法论：和谐色 + 色阶 + 工具包
+============================================================ */
+const SCHEMES = [
+  { key: "comp",   name: "对比色",    en: "Complementary",      rots: [180] },
+  { key: "analog", name: "邻近色",    en: "Analogous",          rots: [-30, 30] },
+  { key: "split",  name: "分裂互补",  en: "Split complementary", rots: [150, 210] },
+  { key: "triad",  name: "三联色",    en: "Triadic",            rots: [120, 240] },
+  { key: "square", name: "方形调色",  en: "Square",             rots: [90, 180, 270] },
+];
+
+/* 每个色相的完整数据：OKLCH、10 级色阶、锁定步、6 色工具包 */
+/* 给定品牌色明度 OL0、彩度 OC0 与目标色相（OKLCH，0–100 明度标度），生成该色相的 10 级色阶 + 6 色工具包。
+   - A 60 = OKLCH 色阶中与品牌色同明度（L 最接近）的色彩（搭配规则中的「品牌等价色」），A 40 / A 80 = 色阶中 L ± 20 的亮 / 暗变体；
+   - Tint / Tone / Shade 以和谐基准色 refRgb（HSL 色轮旋转出的原始和谐色）为基准拓展，强度随品牌色所在色阶自适应：
+     亮色带（A 10–40）→ T60/T50/S60；中色带（A 50–60）→ T70/T60/S70；深色带（A 70–100）→ T80/T70/S80；也可手动固定或随机组合（排除 10 / 90，三值拉开差距）；
+   - 彩度取品牌彩度并按 sRGB 色域钳制；采用 OKLCH 而非 CIE LCH：明亮区间蓝色系不再偏紫，色相恒定。 */
+const resolveTts = (OL0, tts) => {
+  if (Array.isArray(tts)) return tts.map(Number);
+  if (tts && tts !== "auto" && tts !== "random") { const n = Number(tts); if (!isNaN(n)) return [n, n - 10, n]; }
+  const lockNum = 10 + Math.round((95 - clamp(OL0, 5, 95)) / 10) * 10;
+  if (lockNum <= 40) return [60, 50, 60];
+  if (lockNum <= 60) return [70, 60, 70];
+  return [80, 70, 80];
+};
+/* 随机 TTS：候选 20–80（排除 10 / 90），三值两两差距拉开（Tone 与两侧 ≥ 20、Tint 与 Shade ≥ 30），避免糊在一起 */
+function genRandomTts() {
+  const cand = [20, 30, 40, 50, 60, 70, 80];
+  for (let i = 0; i < 80; i++) {
+    const t = cand[Math.floor(Math.random() * cand.length)];
+    const o = cand[Math.floor(Math.random() * cand.length)];
+    const s = cand[Math.floor(Math.random() * cand.length)];
+    if (Math.abs(t - o) >= 20 && Math.abs(o - s) >= 20 && Math.abs(t - s) >= 30) return [t, o, s];
+  }
+  return [60, 30, 80];
+}
+function buildKitForHue(OL0, OC0, oHue, refRgb, tts, isBase = false) {
+  const cAt = L => Math.min(OC0, okMaxChroma(L, oHue));
+  const mkL = L => oklchToRgb100(L, cAt(L), oHue);
+
+  // 10 级色阶：
+  //  - 品牌色自身的色阶 → 以品牌色本色为锚点向亮 / 暗展开（品牌色必在色卡中）
+  //  - 和谐色的色阶 → 与品牌色阶共用同一组明度位置（同标签即同明度位置，跨色相对比才有一致性）
+  const cand = [];
+  for (let k = -9; k <= 9; k++) { const L = OL0 + k * 10; if (L >= 1 && L <= 99) cand.push(L); }
+  cand.sort((a, b) => Math.abs(a - OL0) - Math.abs(b - OL0));
+  const Ls = [...new Set(cand.slice(0, 10).map(L => clamp(Math.round(L), 5, 95)))].sort((a, b) => a - b);
+  const steps = Ls.map(L => ({ label: okStepLabel(L), L, rgb: mkL(L) }));
+  steps.sort((a, b) => a.L - b.L); // 展示顺序：暗 → 亮
+
+  // 锁定：基准色（品牌色 / 和谐基准色）本色所在的色阶
+  const nearest = L => { let bi = 0, bd = 1e9; steps.forEach((s, i) => { const d = Math.abs(s.L - L); if (d < bd) { bd = d; bi = i; } }); return bi; };
+  // 锁定：基准色（品牌色 / 和谐基准色）本色所在的色阶——和谐色锁定其基准色所在阶，故各色相位置不同
+  const refLstar = rgbToOklch100(refRgb)[0];
+  const lockIdx = nearest(refLstar);
+
+  // 角色 = 对应的色阶步（角色色值直接取色阶上的格子，保证同标签同色值）
+  const roleIdx = {
+    "A 60": nearest(OL0),
+    "A 40": nearest(OL0 + 20),
+    "A 80": nearest(OL0 - 20),
+  };
+  const [tT, tO, tS] = resolveTts(OL0, tts);
+  const roles = {
+    "A 60": steps[roleIdx["A 60"]].label,
+    "A 40": steps[roleIdx["A 40"]].label,
+    "A 80": steps[roleIdx["A 80"]].label,
+    "Tint 80": "Tint " + tT, "Tone 70": "Tone " + tO, "Shade 60": "Shade " + tS,
+  };
+  const kit = {
+    "A 60": steps[roleIdx["A 60"]].rgb,
+    "A 40": steps[roleIdx["A 40"]].rgb,
+    "A 80": steps[roleIdx["A 80"]].rgb,
+    "Tint 80": tint(refRgb, tT / 100), "Tone 70": tone(refRgb, tO / 100), "Shade 60": shade(refRgb, tS / 100),
+  };
+  if (isBase) kit["A 60"] = refRgb; // 品牌色本色：用用户输入的精确 HEX，避免往返舍入
+  return { L0: OL0, C0: OC0, hueLch: oHue, refRgb, steps, lockIdx, roles, kit, tts: [tT, tO, tS] };
+}
+
+/* 单个品牌色的完整数据（用于品牌色自身与方法 2 的 B 品牌色）：基准色即品牌色本身 */
+function buildHueData(hex, tts) {
+  const rgb = hexToRgb(hex);
+  const [L0, C0, H0] = rgbToOklch100(rgb);
+  return { hex, rgb, ...buildKitForHue(L0, C0, H0, rgb, tts) };
+}
+
+/* 由品牌色生成全部和谐色相数据：HSL 色轮旋转取参考色 → 转入 OKLCH 色相 → 同明度生成 */
+function buildAll(baseHex, tts) {
+  const base = buildHueData(baseHex, tts);
+  const [h, s, l] = rgbToHsl(base.rgb);
+  const harmonies = [];
+  for (const sch of SCHEMES) {
+    sch.rots.forEach((rot, k) => {
+      const refRgb = hslToRgb(h + rot, s, l);
+      const oHue = rgbToOklch100(refRgb)[2];
+      const suffix = sch.rots.length > 1 ? (k + 1) : "";
+      harmonies.push({
+        scheme: sch, label: sch.name + suffix, en: sch.en + suffix, rot, refHex: rgbToHex(...refRgb),
+        data: buildKitForHue(base.L0, base.C0, oHue, refRgb, tts),
+      });
+    });
+  }
+  return { base, harmonies, hsl: [h, s, l] };
+}
+
+/* ============================================================
+   搭配规则（源自原文 img13–img20）
+   角色: A60 / A40 / A80 / Tint80 / Tone70 / Shade60
+============================================================ */
+const SINGLE_RULE = ["A 40", "A 60", "Tint 80", "Shade 60", "Tone 70", "A 80"];
+/* 双色系·顺序一定 三种规则 + 顺序随机四种（原文规则一~四） */
+const DUAL_RULES = [
+  { name: "规则 ①（C1 三色 + C2 TTS）", seq: [["C1","A 60"],["C1","A 40"],["C1","A 80"],["C2","Tint 80"],["C2","Tone 70"],["C2","Shade 60"]] },
+  { name: "规则 ②（C1 品牌 + TTS，C2 品牌 + TTS）", seq: [["C1","A 60"],["C1","Tint 80"],["C1","A 40"],["C2","A 60"],["C2","A 40"],["C2","Shade 60"]] },
+  { name: "规则 ③（C1 三色 + C2 三色）", seq: [["C1","A 60"],["C1","A 40"],["C1","A 80"],["C2","A 60"],["C2","A 40"],["C2","A 80"]] },
+];
+const DUAL_RANDOM = [
+  [["C1","A 80"],["C2","Tint 80"],["C1","A 40"],["C2","Tone 70"],["C1","A 60"],["C2","Shade 60"]],
+  [["C1","A 40"],["C1","A 80"],["C2","Tint 80"],["C2","Tone 70"],["C1","A 60"],["C2","Shade 60"]],
+  [["C2","Tone 70"],["C1","A 60"],["C2","Shade 60"],["C1","A 80"],["C2","Tint 80"],["C1","A 40"]],
+  [["C1","A 60"],["C2","Tone 70"],["C1","A 80"],["C1","A 40"],["C2","Shade 60"],["C2","Tint 80"]],
+];
+const TRIPLE_RULES = [
+  { name: "优选（每色 A 60 + A 40）", seq: [["C1","A 60"],["C1","A 40"],["C2","A 60"],["C2","A 40"],["C3","A 60"],["C3","A 40"]] },
+  { name: "暗色版（每色 A 40 + A 80 · 暗色接近，需斟酌）", seq: [["C1","A 40"],["C1","A 80"],["C2","A 40"],["C2","A 80"],["C3","A 40"],["C3","A 80"]], warn: true },
+];
+const QUAD_RULES = [
+  { name: "优选（每色 A 60 + A 40）", seq: [["C1","A 60"],["C1","A 40"],["C2","A 60"],["C2","A 40"],["C3","A 60"],["C3","A 40"],["C4","A 60"],["C4","A 40"]] },
+  { name: "暗色版（每色 A 40 + A 80 · 暗色接近，需斟酌）", seq: [["C1","A 40"],["C1","A 80"],["C2","A 40"],["C2","A 80"],["C3","A 40"],["C3","A 80"],["C4","A 40"],["C4","A 80"]], warn: true },
+];
+/* 用量占比参考（顺序即规则顺序） */
+const PROPORTIONS = {
+  2: [45, 55],
+  3: [40, 45, 15],
+  4: [35, 40, 12, 13],
+  5: [32, 38, 10, 10, 10],
+  6: [30, 36, 9, 11, 9, 5],
+  8: [22, 18, 16, 13, 11, 8, 7, 5],
+};
+
+const state = {
+  baseHex: "#1b58f4",
+  valueMode: "hex",   // 品牌色输入框的色彩空间：hex / rgb / hsl / lch / oklch / lab
+  ttsMode: "auto",    // TTS 强度：auto（按品牌色所在色阶自适应）/ 60 / 70 / 80
+  mode: "mono",
+  schemeKey: "all",
+  selected: [],       // 多色系选中的色彩 label 序列（"品牌色" 或和谐色 label，顺序即 C1、C2…）
+  variant: 0,
+  randomIdx: 0,
+  monoCount: 4,
+  dualB: "#f25c05",
+  dualBMode: "hex",
+};
+
+/* ============================================================
+   UI 渲染
+============================================================ */
+const $ = id => document.getElementById(id);
+let toastTimer;
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 1400);
+}
+function copyText(txt, tip) {
+  navigator.clipboard.writeText(txt).then(() => toast(tip || "已复制")).catch(() => {
+    const ta = document.createElement("textarea");
+    ta.value = txt; document.body.appendChild(ta); ta.select();
+    document.execCommand("copy"); ta.remove(); toast(tip || "已复制");
+  });
+}
+const hexOf = rgb => rgbToHex(...rgb);
+const fmt = hex => hex.toUpperCase();
+
+let MODEL = null;
+
+function renderAll() {
+  if (state.ttsMode === "random" && !Array.isArray(state.ttsRandom)) state.ttsRandom = genRandomTts();
+  const activeTts = state.ttsMode === "random" ? state.ttsRandom : state.ttsMode;
+  MODEL = buildAll(state.baseHex, activeTts);
+  renderInput();
+  renderRamps();
+  renderKits();
+  renderGenerator();
+  renderPreview();
+  try { localStorage.setItem("qq-color-tool", JSON.stringify(state)); } catch (e) {}
+}
+
+/* ---- 输入区 ---- */
+const PRESETS = ["#1b58f4", "#0d5eaf", "#2f54eb", "#0ea5e9", "#14b8a6", "#16a34a", "#f59e0b", "#f25c05", "#e11d48", "#d946ef", "#7c3aed", "#1a1f28"];
+function renderInput() {
+  const { base } = MODEL;
+  const sw = $("bigSwatch");
+  sw.style.background = state.baseHex;
+  sw.style.color = isLightColor(base.rgb) ? "rgba(0,0,0,.65)" : "#fff";
+  sw.querySelector("span").textContent = state.baseHex.toLowerCase();
+  $("modeSel").value = state.valueMode;
+  $("valueInput").value = formatColorValue(state.baseHex, state.valueMode);
+  $("colorPicker").value = /^#[0-9a-f]{6}$/i.test(state.baseHex) ? state.baseHex : "#1b58f4";
+  const p = $("presets");
+  if (!p.dataset.built) {
+    p.dataset.built = "1";
+    const lbl = document.createElement("div");
+    lbl.className = "lbl";
+    lbl.textContent = "常用品牌色";
+    p.appendChild(lbl);
+    const row = document.createElement("div");
+    row.className = "preset-row";
+    PRESETS.forEach(hex => {
+      const d = document.createElement("div");
+      d.className = "preset"; d.style.background = hex; d.title = hex;
+      d.onclick = () => { state.baseHex = hex; renderAll(); };
+      row.appendChild(d);
+    });
+    p.appendChild(row);
+  }
+}
+
+/* ---- 色阶区 ---- */
+const LOCK_SVG = '<svg class="lock" viewBox="0 0 16 16"><path fill="rgba(255,255,255,.95)" stroke="rgba(0,0,0,.35)" stroke-width=".6" d="M8 1a3.5 3.5 0 0 0-3.5 3.5V6H4a1.5 1.5 0 0 0-1.5 1.5v6A1.5 1.5 0 0 0 4 15h8a1.5 1.5 0 0 0 1.5-1.5v-6A1.5 1.5 0 0 0 12 6h-.5V4.5A3.5 3.5 0 0 0 8 1Zm2 5H6V4.5a2 2 0 1 1 4 0V6Z"/></svg>';
+function rampRow(title, sub, hueData, showOwnPill) {
+  const block = document.createElement("div");
+  block.className = "ramp-block";
+  const t = document.createElement("div");
+  t.className = "ramp-title";
+  t.innerHTML = `${title} <span class="sub">${sub}</span>`;
+  const row = document.createElement("div");
+  row.className = "ramp";
+  // 显示顺序：A 100（最暗）在左 → A 10（最亮）在右（从暗到亮）
+  const ordered = hueData.steps;
+  const lockDisplayIdx = hueData.lockIdx;
+  ordered.forEach((s, i) => {
+    const d = document.createElement("div");
+    d.className = "step" + (isLightColor(s.rgb) ? " light" : "");
+    d.style.background = hexOf(s.rgb);
+    d.textContent = s.label;
+    if (showOwnPill && i === lockDisplayIdx) d.classList.add("pill");
+    if (!showOwnPill && i === lockDisplayIdx) {
+      d.classList.add("pill");
+      d.insertAdjacentHTML("beforeend", LOCK_SVG);
+    }
+    const hex = hexOf(s.rgb);
+    d.onclick = () => copyText(fmt(hex), `已复制 ${fmt(hex)}`);
+    row.appendChild(d);
+  });
+  block.appendChild(t); block.appendChild(row);
+  return block;
+}
+function renderRamps() {
+  const area = $("rampArea");
+  area.innerHTML = "";
+  const { base, harmonies } = MODEL;
+  area.appendChild(rampRow(
+    `品牌色 / 基础色 Core`,
+      `${state.baseHex.toLowerCase()} · 本阶 OKLCH L≈${base.L0.toFixed(0)}`,
+    base, true
+  ));
+  for (const h of harmonies) {
+    area.appendChild(rampRow(
+      `${h.label} ${h.en}`,
+      `ΔH ${h.rot > 0 ? "+" : ""}${h.rot}° · 基准色 ${fmt(h.refHex)} · 同明度搭配色 ${fmt(hexOf(h.data.kit["A 60"]))}`,
+      h.data, false
+    ));
+  }
+}
+
+/* ---- 工具包区 ---- */
+function kitBlock(title, sub, hueData, open, refHexText = "") {
+  const det = document.createElement("details");
+  det.className = "kit-group";
+  if (open) det.open = true;
+  const sum = document.createElement("summary");
+  sum.innerHTML = `<span class="arrow">▶</span> ${title} <span style="color:var(--text-3);font-weight:400;font-size:12px">${sub}</span>`
+    + (refHexText ? `<span class="ref-hex">${refHexText}</span>` : "");
+  const mini = document.createElement("span");
+  mini.className = "mini";
+  Object.values(hueData.kit).forEach(rgb => {
+    const i = document.createElement("i");
+    i.style.background = hexOf(rgb);
+    mini.appendChild(i);
+  });
+  sum.appendChild(mini);
+  const grid = document.createElement("div");
+  grid.className = "kit-grid";
+  for (const [role, rgb] of Object.entries(hueData.kit)) {
+    const cell = document.createElement("div");
+    cell.className = "kit-swatch";
+    const hex = hexOf(rgb);
+    cell.innerHTML = `<div class="box ${isLightColor(rgb) ? "light" : ""}" style="background:${hex}"><span>${(hueData.roles || {})[role] || role}</span><span class="hexv">${fmt(hex)}</span></div>`;
+    cell.onclick = () => copyText(fmt(hex), `已复制 ${role} ${fmt(hex)}`);
+    grid.appendChild(cell);
+  }
+  det.appendChild(sum); det.appendChild(grid);
+  return det;
+}
+function renderKits() {
+  const area = $("kitArea");
+  area.innerHTML = "";
+  const { base, harmonies } = MODEL;
+  area.appendChild(kitBlock("品牌色 / 基础色 Core", state.baseHex.toLowerCase(), base, true));
+  for (const h of harmonies) {
+    area.appendChild(kitBlock(h.label, `ΔH ${h.rot > 0 ? "+" : ""}${h.rot}°`, h.data, false, `基准色 ${fmt(h.refHex)}`));
+  }
+}
+
+/* ============================================================
+   生成器
+============================================================ */
+function kitOf(hueData) { return hueData.kit; }
+
+function currentRuleAndKit() {
+  const { base, harmonies } = MODEL;
+  if (state.mode === "mono") {
+    const roles = SINGLE_RULE.slice(0, state.monoCount);
+    const kit = kitOf(base);
+    return {
+      seq: roles.map(r => ["C0", r]),
+      kits: { "C0": kit },
+      names: { "C0": "品牌色" },
+      roleLabels: { "C0": base.roles || {} },
+      warn: false,
+    };
+  }
+  if (state.mode === "harmony") {
+    // 按点击顺序解析选中色；品牌色可取消，选中项的顺序即 C1、C2… 的顺序
+    const resolved = state.selected.map(lbl => {
+      if (lbl === "品牌色") return { name: "品牌色", kit: kitOf(base), roles: base.roles || {} };
+      const h = harmonies.find(x => x.label === lbl);
+      return h ? { name: h.label, kit: kitOf(h.data), roles: h.data.roles || {} } : null;
+    }).filter(Boolean);
+    const n = Math.min(4, Math.max(2, resolved.length));
+    const used = resolved.slice(0, n);
+    while (used.length < n) { // 防御：不足时按方案顺序补齐
+      const fb = harmonies.find(h => !used.some(u => u.name === h.label));
+      if (!fb) break;
+      used.push({ name: fb.label, kit: kitOf(fb.data), roles: fb.data.roles || {} });
+    }
+    let seq, warn = false;
+    if (n === 2) {
+      if (state.variant === 3) { seq = DUAL_RANDOM[state.randomIdx % 4]; }
+      else { seq = DUAL_RULES[state.variant].seq; }
+    } else if (n === 3) {
+      seq = TRIPLE_RULES[state.variant % 2].seq;
+      warn = TRIPLE_RULES[state.variant % 2].warn;
+    } else {
+      seq = QUAD_RULES[state.variant % 2].seq;
+      warn = QUAD_RULES[state.variant % 2].warn;
+    }
+    const kits = {}, names = {}, roleLabels = {};
+    used.forEach((u, i) => { kits["C" + (i + 1)] = u.kit; names["C" + (i + 1)] = u.name; roleLabels["C" + (i + 1)] = u.roles; });
+    return { seq, kits, names, roleLabels, warn };
+  }
+  /* dual：方法 2，两个品牌色 */
+  const a = base;
+  const b = buildHueData(state.dualB, state.ttsMode);
+  let seq;
+  if (state.variant === 3) { seq = DUAL_RANDOM[state.randomIdx % 4]; }
+  else { seq = DUAL_RULES[state.variant].seq; }
+  return {
+    seq,
+    kits: { "C1": kitOf(a), "C2": kitOf(b) },
+    names: { "C1": "A 品牌色", "C2": "B 品牌色" },
+    roleLabels: { "C1": a.roles || {}, "C2": b.roles || {} },
+    warn: false,
+    dualB: b,
+  };
+}
+
+function buildPalette() {
+  const info = currentRuleAndKit();
+  return info.seq.map(([cid, role], i) => {
+    const roleLabel = (info.roleLabels?.[cid] || {})[role] || role;
+    const cn = "C" + (cid === "C0" ? 1 : parseInt(cid.slice(1), 10));
+    return {
+      no: i + 1, cid, role, roleLabel, cn,
+      rgb: info.kits[cid][role],
+      hex: hexOf(info.kits[cid][role]),
+      label: `${info.names[cid] || cid} · ${roleLabel}`,
+    };
+  });
+}
+
+function renderGenerator() {
+  renderControls();
+  // TTS 色调（所有模式通用，置于控制区末尾）
+  const box = $("genControls");
+  const ttsRow = document.createElement("div");
+  ttsRow.className = "ctrl-row";
+  ttsRow.style.marginTop = "12px";
+  ttsRow.innerHTML = `
+    <div class="ctrl">TTS 色调
+      <select id="ttsSel" title="Tint / Tone / Shade 的混合强度">
+        <option value="auto">自动（按品牌色明度）</option>
+        <option value="60">固定 · Tint 60 / Tone 50 / Shade 60</option>
+        <option value="70">固定 · Tint 70 / Tone 60 / Shade 70</option>
+        <option value="80">固定 · Tint 80 / Tone 70 / Shade 80</option>
+        <option value="random">随机（排除 10 / 90，拉开差距）</option>
+      </select>
+      <button class="btn" id="ttsReroll" style="display:${state.ttsMode === "random" ? "inline-block" : "none"}">换一批</button>
+    </div>`;
+  box.appendChild(ttsRow);
+  $("ttsSel").value = state.ttsMode;
+  // 3–4 色时搭配规则仅用 A 系列（每色 A 60 + A 40 / A 50 + A 30），TTS 色调不参与 → 置灰
+  const ttsDisabled = state.mode === "harmony" && state.selected.length >= 3;
+  const ttsSelEl = $("ttsSel");
+  ttsSelEl.disabled = ttsDisabled;
+  ttsSelEl.style.opacity = ttsDisabled ? ".45" : "";
+  ttsSelEl.style.cursor = ttsDisabled ? "not-allowed" : "";
+  ttsSelEl.title = ttsDisabled ? "3–4 色搭配仅使用 A 系列明度（每色 A 60 + A 40 或 A 50 + A 30），无需 TTS 色调" : "Tint / Tone / Shade 的混合强度";
+  const ttsRerollEl = $("ttsReroll");
+  ttsRerollEl.disabled = ttsDisabled;
+  ttsRerollEl.style.opacity = ttsDisabled ? ".45" : "";
+  ttsRerollEl.style.cursor = ttsDisabled ? "not-allowed" : "";
+  $("ttsSel").onchange = e => {
+    state.ttsMode = e.target.value;
+    if (state.ttsMode === "random") state.ttsRandom = genRandomTts();
+    renderAll();
+  };
+  $("ttsReroll").onclick = () => { state.ttsRandom = genRandomTts(); renderAll(); };
+  renderResult();
+}
+
+function renderControls() {
+  const box = $("genControls");
+  box.innerHTML = "";
+  const { harmonies } = MODEL;
+
+  if (state.mode === "mono") {
+    box.innerHTML = `
+      <div class="ctrl-row" style="margin-bottom:0">
+        <div class="ctrl">颜色数量</div>
+        <div class="tag-row">
+          ${[2,3,4,5,6].map(n => `<button class="tag-btn ${n===state.monoCount?"on":""}" data-n="${n}">${n} 色</button>`).join("")}
+        </div>
+      </div>`;
+    [...box.querySelectorAll(".tag-btn")].forEach(b => {
+      b.onclick = () => { state.monoCount = +b.dataset.n; renderGenerator(); };
+    });
+    return;
+  }
+
+  if (state.mode === "harmony") {
+    const schemeChips = document.createElement("div");
+    schemeChips.className = "ctrl-row";
+    schemeChips.innerHTML = `<div class="ctrl">和谐色方案
+      <select id="schemeSel">
+        <option value="all" ${state.schemeKey==="all"?"selected":""}>全部（自由选择）</option>
+        ${SCHEMES.map(s => `<option value="${s.key}" ${s.key===state.schemeKey?"selected":""}>${s.name} ${s.en}</option>`).join("")}
+      </select>
+    </div>`;
+    box.appendChild(schemeChips);
+    $("schemeSel").onchange = e => {
+      state.schemeKey = e.target.value;
+      state.variant = 0; state.randomIdx = 0;
+      if (state.schemeKey === "all") {
+        // 自由选择：跨方案保留当前有效选择；不足 2 色则默认品牌色 + 对比色
+        const valid = state.selected.filter(lbl => lbl === "品牌色" || harmonies.some(h => h.label === lbl));
+        state.selected = valid.length >= 2 ? valid : ["品牌色", "对比色"];
+      } else {
+        const sch = SCHEMES.find(s => s.key === state.schemeKey);
+        const labels = harmonies.filter(h => h.scheme.key === sch.key).map(h => h.label);
+        state.selected = ["品牌色", labels[0]];
+      }
+      renderGenerator();
+    };
+
+    const chipRow = document.createElement("div");
+    chipRow.className = "ctrl-row";
+    const chipWrap = document.createElement("div");
+    chipWrap.className = "hue-chips";
+    // 「全部（自由选择）」显示全部和谐色，可跨方案任意组合；否则只显示当前方案的和谐色
+    const pool = state.schemeKey === "all" ? harmonies : harmonies.filter(h => h.scheme.key === state.schemeKey);
+    const items = [{ label: "品牌色", hex: state.baseHex, rot: 0 }, ...pool.map(h => ({ label: h.label, hex: h.refHex, rot: h.rot }))];
+    items.forEach(it => {
+      const idx = state.selected.indexOf(it.label);
+      const chip = document.createElement("div");
+      chip.className = "chip" + (idx >= 0 ? " sel" : "");
+      chip.title = `${it.label} 基准色 ${fmt(it.hex)}`;
+      chip.innerHTML = `<i style="background:${it.hex}"></i>${it.label}${idx >= 0 ? `<span class="ord">${idx + 1}</span>` : ""}`;
+      chip.onclick = () => {
+        const i = state.selected.indexOf(it.label);
+        if (i >= 0) {
+          if (state.selected.length <= 2) { toast("至少保留 2 个色彩"); return; }
+          state.selected.splice(i, 1);
+        }
+        else { if (state.selected.length >= 4) { toast("最多选 4 色"); return; } state.selected.push(it.label); }
+        state.variant = 0; state.randomIdx = 0;
+        renderGenerator();
+      };
+      chipWrap.appendChild(chip);
+    });
+    chipRow.appendChild(chipWrap);
+    box.appendChild(chipRow);
+
+    const n = Math.max(2, state.selected.length);
+    const ctrl = document.createElement("div");
+    ctrl.className = "ctrl-row";
+    ctrl.style.marginTop = "12px";
+    let opts = "";
+    if (n === 2) {
+      opts = DUAL_RULES.map((r, i) => `<option value="${i}" ${state.variant===i?"selected":""}>顺序一定 · ${r.name}</option>`).join("")
+        + `<option value="3" ${state.variant===3?"selected":""}>顺序随机</option>`;
+    } else {
+      const rules = n === 3 ? TRIPLE_RULES : QUAD_RULES;
+      opts = rules.map((r, i) => `<option value="${i}" ${state.variant % 2 ===i?"selected":""}>${r.name}</option>`).join("");
+    }
+    ctrl.innerHTML = `<div class="ctrl">搭配规则<select id="variantSel">${opts}</select></div>
+      <button class="btn" id="btnSwap">反转 C 顺序</button>`;
+    box.appendChild(ctrl);
+    $("variantSel").onchange = e => { state.variant = +e.target.value; state.randomIdx = 0; renderResult(); };
+    $("btnSwap").onclick = () => {
+      if (state.selected.length > 1) {
+        state.selected.reverse();
+        renderGenerator();
+      }
+    };
+    return;
+  }
+
+  /* dual */
+  const bFmt = formatColorValue(state.dualB, state.dualBMode);
+  box.innerHTML = `
+    <div class="ctrl-row">
+      <div class="ctrl">B 品牌色
+        <input type="color" id="dualBPicker" value="${state.dualB}" title="取色器">
+        <select id="dualBMode" class="mode-sel" title="切换色彩空间">
+          <option value="hex">HEX</option>
+          <option value="rgb">RGB</option>
+          <option value="hsl">HSL</option>
+          <option value="lch">LCH</option>
+          <option value="oklch">OKLCH</option>
+          <option value="lab">LAB</option>
+        </select>
+        <input type="text" class="hex" id="dualBHex" value="${bFmt}" spellcheck="false" title="支持当前所选色彩空间格式输入">
+      </div>
+    </div>
+    <div class="ctrl-row">
+      <div class="ctrl">搭配规则
+        <select id="variantSel2">
+          ${DUAL_RULES.map((r,i)=>`<option value="${i}" ${state.variant===i?"selected":""}>顺序一定 · ${r.name}</option>`).join("")}
+          <option value="3" ${state.variant===3?"selected":""}>顺序随机</option>
+        </select>
+      </div>
+      <button class="btn" id="btnSwapAB">交换 A / B</button>
+    </div>
+    `;
+  $("dualBMode").value = state.dualBMode;
+  $("dualBMode").onchange = e => { state.dualBMode = e.target.value; renderGenerator(); };
+  $("dualBHex").onchange = e => {
+    const parsed = parseColorValue(e.target.value, state.dualBMode);
+    if (parsed) { state.dualB = parsed; renderGenerator(); }
+    else { toast("数值解析失败，请检查格式"); renderGenerator(); }
+  };
+  $("dualBHex").onkeydown = e => { if (e.key === "Enter") e.target.dispatchEvent(new Event("change")); };
+  $("dualBPicker").oninput = e => {
+    // 只刷新结果区，不重建控件区——取色板保持打开，拖完点击空白处收起（与 A 品牌色一致）
+    state.dualB = e.target.value;
+    renderResult();
+  };
+  $("variantSel2").onchange = e => { state.variant = +e.target.value; state.randomIdx = 0; renderResult(); };
+  $("btnSwapAB").onclick = () => {
+    const t = state.baseHex;
+    state.baseHex = state.dualB; state.dualB = t;
+    renderAll();
+  };
+}
+
+function renderResult() {
+  const palette = buildPalette();
+  const info = currentRuleAndKit();
+  const box = $("genResult");
+  box.style.display = "block";
+
+  const strip = $("paletteStrip");
+  strip.innerHTML = "";
+  palette.forEach(p => {
+    const d = document.createElement("div");
+    d.className = "seg" + (isLightColor(p.rgb) ? " light" : "");
+    d.style.background = p.hex;
+    d.innerHTML = `<span class="cn">${p.cn}</span><span class="no">No.${p.no}</span><span class="role">${p.roleLabel}</span><span class="hexv">${fmt(p.hex)}</span>`;
+    d.title = fmt(p.hex);
+    d.onclick = () => copyText(fmt(p.hex), `已复制 No.${p.no} ${fmt(p.hex)}`);
+    strip.appendChild(d);
+  });
+
+  $("btnShuffle").style.display = (state.variant === 3 && state.mode !== "mono") ? "inline-block" : "none";
+  $("btnShuffle").onclick = () => { state.randomIdx = (state.randomIdx + 1) % 4; renderResult(); };
+
+  const exp = palette.map(p => fmt(p.hex)).join(", ");
+  $("exportBox").value = exp;
+  $("btnCopyHex").onclick = () => copyText(exp, "已复制全部 HEX");
+  $("btnCopyCss").onclick = () => copyText(
+    ":root {\n" + palette.map(p => `  --chart-${p.no}: ${fmt(p.hex)}; /* ${p.label} */`).join("\n") + "\n}",
+    "已复制 CSS 变量");
+  $("btnCopyJson").onclick = () => copyText(JSON.stringify(
+    palette.map(p => ({ no: p.no, color: p.cid === "C0" ? "brand" : (p.cid), role: p.roleLabel, hex: fmt(p.hex) })), null, 2), "已复制 JSON");
+
+  renderPreview();
+}
+
+/* ============================================================
+   图表预览（SVG）
+============================================================ */
+function renderPreview() {
+  const palette = buildPalette();
+  renderDonut(palette);
+  renderBars(palette);
+  renderLine(palette);
+}
+function svgEl(html, w, h) {
+  return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" style="display:block">${html}</svg>`;
+}
+function arcPath(cx, cy, r1, r2, a0, a1) {
+  const p = (r, a) => [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+  const large = a1 - a0 > Math.PI ? 1 : 0;
+  const [x0, y0] = p(r2, a0), [x1, y1] = p(r2, a1);
+  const [x2, y2] = p(r1, a1), [x3, y3] = p(r1, a0);
+  return `M${x0},${y0} A${r2},${r2} 0 ${large} 1 ${x1},${y1} L${x2},${y2} A${r1},${r1} 0 ${large} 0 ${x3},${y3} Z`;
+}
+function renderDonut(palette) {
+  const props = PROPORTIONS[palette.length] || PROPORTIONS[6];
+  const total = props.reduce((a, b) => a + b, 0);
+  let a = -Math.PI / 2;
+  const segs = [];
+  palette.forEach((p, i) => {
+    const frac = props[i] / total;
+    const a1 = a + frac * Math.PI * 2 - 0.015;
+    segs.push(`<path d="${arcPath(80, 80, 46, 78, a, Math.max(a + 0.02, a1))}" fill="${p.hex}"><title>${p.roleLabel} ${Math.round(frac*100)}%</title></path>`);
+    a += frac * Math.PI * 2;
+  });
+  $("donutBox").innerHTML = svgEl(segs.join(""), 160, 160);
+  $("donutLegend").innerHTML = palette.map((p, i) =>
+    `<span><i style="background:${p.hex}"></i>No.${i + 1} ${Math.round(props[i] / total * 100)}%</span>`).join("");
+}
+function renderBars(palette) {
+  const cats = ["Q1", "Q2", "Q3", "Q4"];
+  const series = palette.length; // 系列数与配色数量一致
+  const W = 300, H = 190, pad = 30, bw = (W - pad * 2) / cats.length;
+  const vals = [
+    [72, 96, 60, 88], [48, 70, 82, 64], [30, 52, 44, 76], [58, 38, 66, 50],
+    [42, 64, 36, 70], [66, 44, 78, 58], [36, 80, 52, 46], [80, 56, 90, 62],
+  ];
+  let g = "";
+  for (let gi = 0; gi < 5; gi++) {
+    const y = H - pad - gi * ((H - pad * 2) / 4);
+    g += `<line x1="${pad}" y1="${y}" x2="${W - 8}" y2="${y}" stroke="#eceef1"/><text x="${pad - 6}" y="${y + 4}" font-size="9" fill="#9aa1ac" text-anchor="end">${gi * 25}</text>`;
+  }
+  cats.forEach((c, ci) => {
+    // 组内紧密排列，组间留出 26% 间隙，便于区分 Q1–Q4
+    const groupW = bw * 0.74;
+    for (let s = 0; s < series; s++) {
+      const v = vals[s % vals.length][ci];
+      const hgt = v / 100 * (H - pad * 2);
+      const w = groupW / series;
+      const x = pad + ci * bw + (bw - groupW) / 2 + s * w;
+      g += `<rect x="${x}" y="${H - pad - hgt}" width="${Math.max(w - 1.5, 2)}" height="${hgt}" rx="1.5" fill="${palette[s].hex}"><title>${c} No.${s + 1}: ${v}</title></rect>`;
+    }
+    g += `<text x="${pad + ci * bw + bw / 2}" y="${H - 10}" font-size="10" fill="#5c6470" text-anchor="middle">${c}</text>`;
+  });
+  $("barBox").innerHTML = svgEl(g, W, H);
+}
+function renderLine(palette) {
+  const seriesN = palette.length; // 系列数与配色数量一致
+  const W = 300, H = 190, pad = 30;
+  const data = [
+    [20, 42, 38, 62, 78], [55, 48, 66, 58, 84], [34, 26, 48, 70, 58],
+    [62, 70, 54, 76, 66], [28, 50, 44, 60, 72], [70, 58, 76, 50, 80],
+    [40, 34, 56, 64, 52], [58, 66, 42, 72, 88],
+  ];
+  let g = "";
+  for (let gi = 0; gi < 5; gi++) {
+    const y = H - pad - gi * ((H - pad * 2) / 4);
+    g += `<line x1="${pad}" y1="${y}" x2="${W - 8}" y2="${y}" stroke="#eceef1"/><text x="${pad - 6}" y="${y + 4}" font-size="9" fill="#9aa1ac" text-anchor="end">${gi * 25}</text>`;
+  }
+  const months = ["1月", "2月", "3月", "4月", "5月"];
+  months.forEach((m, i) => {
+    const x = pad + i * ((W - pad - 16) / 4);
+    g += `<text x="${x}" y="${H - 10}" font-size="9.5" fill="#5c6470" text-anchor="middle">${m}</text>`;
+  });
+  const leg = [];
+  for (let s = 0; s < seriesN; s++) {
+    const pts = data[s % data.length].map((v, i) => {
+      const x = pad + i * ((W - pad - 16) / 4);
+      const y = H - pad - v / 100 * (H - pad * 2);
+      return [x, y];
+    });
+    const d = pts.map((p, i) => (i ? "L" : "M") + p[0] + "," + p[1]).join(" ");
+    g += `<path d="${d}" fill="none" stroke="${palette[s].hex}" stroke-width="${seriesN > 4 ? 1.8 : 2.4}" stroke-linecap="round" stroke-linejoin="round"/>`;
+    pts.forEach(p => { g += `<circle cx="${p[0]}" cy="${p[1]}" r="${seriesN > 4 ? 2.2 : 3}" fill="${palette[s].hex}"/>`; });
+    leg.push(`<span><i style="background:${palette[s].hex}"></i>系列 ${s + 1}</span>`);
+  }
+  $("lineBox").innerHTML = svgEl(g, W, H);
+  $("lineLegend").innerHTML = leg.join("");
+}
+
+/* ============================================================
+   事件绑定 & 启动
+============================================================ */
+$("modeSel").addEventListener("change", e => { state.valueMode = e.target.value; renderInput(); });
+$("valueInput").addEventListener("change", e => {
+  const parsed = parseColorValue(e.target.value, state.valueMode);
+  if (parsed) { state.baseHex = parsed; renderAll(); }
+  else { toast("数值解析失败，请检查格式"); renderInput(); }
+});
+$("valueInput").addEventListener("keydown", e => { if (e.key === "Enter") e.target.dispatchEvent(new Event("change")); });
+$("colorPicker").addEventListener("input", e => { state.baseHex = e.target.value; renderAll(); });
+$("bigSwatch").addEventListener("click", () => $("colorPicker").click());
+
+document.querySelectorAll("#modeTabs button").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll("#modeTabs button").forEach(b => b.classList.remove("on"));
+    btn.classList.add("on");
+    state.mode = btn.dataset.mode;
+    state.variant = 0; state.randomIdx = 0;
+    if (state.mode === "harmony") {
+      if (state.schemeKey === "all") {
+        const valid = state.selected.filter(lbl => lbl === "品牌色" || MODEL.harmonies.some(h => h.label === lbl));
+        state.selected = valid.length >= 2 ? valid : ["品牌色", "对比色"];
+      } else {
+        const sch = SCHEMES.find(s => s.key === state.schemeKey);
+        const labels = MODEL.harmonies.filter(h => h.scheme.key === sch.key).map(h => h.label);
+        state.selected = ["品牌色", labels[0]];
+      }
+    }
+    renderGenerator();
+  };
+});
+
+/* 恢复本地状态 */
+try {
+  const saved = JSON.parse(localStorage.getItem("qq-color-tool") || "null");
+  if (saved && saved.baseHex && /^#[0-9a-fA-F]{6}$/.test(saved.baseHex)) {
+    Object.assign(state, saved);
+    document.querySelectorAll("#modeTabs button").forEach(b =>
+      b.classList.toggle("on", b.dataset.mode === state.mode));
+  }
+} catch (e) {}
+
+renderAll();
+</script>
+</body>
+</html>
